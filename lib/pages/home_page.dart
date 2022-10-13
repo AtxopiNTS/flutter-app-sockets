@@ -1,8 +1,13 @@
 import 'dart:io';
 
-import 'package:band_names_rt/models/band.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:pie_chart/pie_chart.dart';
+
+import 'package:provider/provider.dart';
+
+import 'package:band_names_rt/models/band.dart';
+import 'package:band_names_rt/services/socket_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -14,23 +19,67 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
 
   List<Band> bands = [
-    Band(id: '1', name: 'Metallica', votes: 5),
-    Band(id: '2', name: 'Su ta gar', votes: 6),
-    Band(id: '3', name: 'Berritxarrak', votes: 7),
-    Band(id: '4', name: 'Etsaiak', votes: 3),
+    // Band(id: '1', name: 'Metallica', votes: 5),
   ];
+
+  @override
+  void initState() {
+    final socketService = Provider.of<SocketService>(context, listen: false);
+
+    socketService.socket.on('active-bands', _handleActiveBands);
+
+    super.initState();
+  }
+
+  void _handleActiveBands( payload ) {
+      print( payload );
+
+      this.bands = ( payload as List )
+        .map( (band) => Band.fromMap(band) )
+        .toList();
+
+      setState(() {}); //repaint
+  }  
+
+  @override
+  void dispose() {
+    final socketService = Provider.of<SocketService>(context, listen: false);
+    socketService.socket.off('active-bands');
+
+    super.dispose();
+  }
    
   @override
   Widget build(BuildContext context) {
+    final socketService = Provider.of<SocketService>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Musika Taldeak / Grupos de música', style: TextStyle( color: Colors.black87 ),),
         backgroundColor: Colors.white,
         elevation: 2,
+        actions: [
+          Container(
+            margin: EdgeInsets.only( right: 10),
+            child: 
+            socketService.serverStatus == ServerStatus.Online
+              ? Icon( Icons.check_circle_rounded, color: Colors.green[300] )
+              : Icon( Icons.offline_bolt, color: Colors.red ),
+          )
+        ],
       ),
-      body: ListView.builder(
-        itemCount: bands.length,
-        itemBuilder: (context, i)  => _bandTile(bands[i])
+      body: Column(
+        children: [
+
+          _showGraphPie(),
+
+          Expanded(
+            child: ListView.builder(
+                    itemCount: bands.length,
+                    itemBuilder: (context, i)  => _bandTile(bands[i])
+                  ),
+          )
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: addNewBand,
@@ -41,14 +90,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _bandTile( Band band) {
+
+    final socketService = Provider.of<SocketService>(context);
+
     return Dismissible(
       key: Key( band.id ),
       direction: DismissDirection.startToEnd,
-      onDismissed: ( DismissDirection direction ) {
-        print('direction: $direction');
-        print('band: ${ band.id }');
-        // TODO: delete from server call
-      },
+      onDismissed: ( _ ) => socketService.socket.emit('delete-band', { 'id': band.id } ),
       background: Container(
         color: Colors.red,
         child: Padding(
@@ -71,9 +119,7 @@ class _HomePageState extends State<HomePage> {
             ),
             title: Text( band.name ),
             trailing: Text('${ band.votes }', style: TextStyle( fontSize: 20 )),
-            onTap: () {
-              print( band.name );
-            }
+            onTap: () => socketService.socket.emit('vote-band', { 'id': band.id } ),
           ),
     );
   }
@@ -86,7 +132,7 @@ class _HomePageState extends State<HomePage> {
       // Android:
         showDialog(
             context: context, 
-            builder: (context) {
+            builder: ( _ ) {
               return AlertDialog(
                 title: Text('Talde berria:'),
                 content: TextField(
@@ -146,25 +192,71 @@ class _HomePageState extends State<HomePage> {
     
 
   void addBandToList( String name) {
-    print( '$name   ${name.length}' );
+    // print( '$name   ${name.length}' );
 
     if (name.length > 1) {
-      // podemos agregar
-      this.bands.add(
-        new Band(
-          id: DateTime.now().toString(),
-          name: name,
-          votes: 0
-        )
-      );
+      /// podemos agregar
+      final socketService = Provider.of<SocketService>(context, listen: false);
 
-      setState(() {
-      
-      });
+      socketService.socket.emit('add-band', { 'name': name });
+
+      // this.bands.add(
+      //   new Band(
+      //     id: DateTime.now().toString(),
+      //     name: name,
+      //     votes: 0
+      //   )
+      // );
+
+      // setState(() {});
     }
-    
-
     Navigator.pop(context);
+  }
+  
+  Widget _showGraphPie() {
+
+    Map<String, double> dataMap = new Map();
+    bands.forEach( (band) {
+      dataMap.putIfAbsent( band.name, () => band.votes.toDouble() );
+    });
+
+    final List<Color> colorList = [
+            Colors.black12,
+      Colors.black54,
+      Colors.green.shade200,
+      Colors.green.shade600,
+      Colors.blue.shade200,
+      Colors.blue.shade600,
+      Colors.amber.shade200,
+      Colors.amber.shade600,
+      Colors.redAccent.shade200,
+      Colors.redAccent.shade700,
+      Colors.purple.shade200,
+      Colors.purple.shade700,
+
+    ];
+
+    return Container(
+      width: double.infinity,
+      height: 225,
+      child: PieChart(dataMap: dataMap,
+        // animationDuration: Duration(milliseconds: 800),
+        // chartLegendSpacing: 32,
+        // chartRadius: MediaQuery.of(context).size.width / 3.2,
+        colorList: colorList,
+        // initialAngleInDegree: 0,
+        // chartType: ChartType.ring,
+        // ringStrokeWidth: 32,
+        centerText: "🎧",
+        chartValuesOptions: const ChartValuesOptions(
+          showChartValueBackground: false,
+          showChartValues: true,
+          showChartValuesInPercentage: true,
+          showChartValuesOutside: false,
+          decimalPlaces: 0,
+      ),
+      )
+    );
   }
 
 

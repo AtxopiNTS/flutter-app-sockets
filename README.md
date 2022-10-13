@@ -14,3 +14,12 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Socket Config
+
+!Note: You may need to change your IP or put localhost on socket.io config file, ./lib/services/socket_service.dart  
+
+IO.Socket socket = IO.io('http://192.168.1.134:3000/', {
+      'transports': ['websocket'],
+      'autoConnect': true
+    });
